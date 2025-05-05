@@ -7,7 +7,7 @@ export const load: PageServerLoad = async (event) => {
 		return redirect(302, '/demo/lucia/login');
 	}
 	return { user: event.locals.user };
-};
+}; 
 
 export const actions: Actions = {
 	logout: async (event) => {
