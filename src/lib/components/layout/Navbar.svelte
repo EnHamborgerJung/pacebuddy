@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { user } from '$lib/stores/user';
+	import MobileMenu from '$lib/components/layout/MobileMenu.svelte';
 	let menuOpen = false;
 </script>
 
@@ -30,14 +31,5 @@
 
 <!-- Mobile dropdown (shown by default) -->
 {#if menuOpen}
-	<ul class="md:hidden flex flex-col space-y-2 p-4 bg-gray-700 text-white">
-		<li><a href="/" class="hover:text-gray-300">Home</a></li>
-		<li><a href="/running" class="hover:text-gray-300">Running</a></li>
-		{#if !$user.isAuthenticated}
-			<li><a href="/demo/lucia/login" class="hover:text-gray-300">Login</a></li>
-		{:else}
-			<li><span class="hover:text-gray-300">Welcome, {$user.username}</span></li>
-			<li><a href="/demo/lucia" class="hover:text-gray-300">Logout</a></li>
-		{/if}
-	</ul>
+	<MobileMenu user = {$user} closeMenu={() => menuOpen = false} />
 {/if} 
