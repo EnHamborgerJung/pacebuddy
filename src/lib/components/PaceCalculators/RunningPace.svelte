@@ -1,5 +1,5 @@
 <script lang="ts">
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 
 // Input-Runen
 const paceMin = writable<number | null>(null);
@@ -9,15 +9,26 @@ const timeMin = writable<number | null>(null);
 const timeSec = writable<number | null>(null);
 const distance = writable<number | null>(null);
 
-// Track previous values to detect changes
-const prevValues = {
-  paceMin: null as number | null,
-  paceSec: null as number | null,
-  timeHr: null as number | null,
-  timeMin: null as number | null,
-  timeSec: null as number | null,
-  distance: null as number | null
-};
+// Error states
+const errors = writable<{
+  pace?: string;
+  time?: string;
+  distance?: string;
+}>({});
+
+// Dark mode
+const isDarkMode = writable(false);
+
+// Convert individual time components to total seconds
+const paceInSeconds = derived([paceMin, paceSec], ([$paceMin, $paceSec]) => {
+  if ($paceMin === null && $paceSec === null) return null;
+  return ($paceMin || 0) * 60 + ($paceSec || 0);
+});
+
+const timeInSeconds = derived([timeHr, timeMin, timeSec], ([$timeHr, $timeMin, $timeSec]) => {
+  if ($timeHr === null && $timeMin === null && $timeSec === null) return null;
+  return ($timeHr || 0) * 3600 + ($timeMin || 0) * 60 + ($timeSec || 0);
+});
 
 // Standard running distances in meters
 const distancePresets = {
@@ -27,122 +38,137 @@ const distancePresets = {
   marathon: 42195      // 42.195 km
 };
 
-// Function to normalize time values (handle seconds >= 60, minutes >= 60)
-function normalizeTime(hours: number, minutes: number, seconds: number) {
-  // If seconds >= 60, adjust minutes and seconds
-  if (seconds >= 60) {
-    minutes += Math.floor(seconds / 60);
-    seconds = seconds % 60;
-  }
-  
-  // If minutes >= 60, adjust hours and minutes
-  if (minutes >= 60) {
-    hours += Math.floor(minutes / 60);
-    minutes = minutes % 60;
-  }
-  
+// Convert seconds to hours, minutes, seconds
+function secondsToTime(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.round(totalSeconds % 60);
   return { hours, minutes, seconds };
 }
 
-// Function to normalize pace values (handle seconds >= 60)
-function normalizePace(minutes: number, seconds: number) {
-  // If seconds >= 60, adjust minutes and seconds
-  if (seconds >= 60) {
-    minutes += Math.floor(seconds / 60);
-    seconds = seconds % 60;
-  }
-  
+// Convert seconds to minutes, seconds
+function secondsToPace(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
   return { minutes, seconds };
 }
 
 // Set a preset distance
 function setPresetDistance(preset: keyof typeof distancePresets) {
   distance.set(distancePresets[preset]);
+  errors.update(e => ({ ...e, distance: undefined }));
 }
 
+// Track what was last modified to prioritize calculations
+const lastModified = writable<'pace' | 'time' | 'distance'>('pace');
+
+function updatePace() {
+  lastModified.set('pace');
+}
+
+function updateTime() {
+  lastModified.set('time');
+}
+
+function updateDistance() {
+  lastModified.set('distance');
+}
+
+// Validate inputs
+function validatePace(min: number | null, sec: number | null): string | undefined {
+  if (min === null && sec === null) return undefined;
+  if (min !== null && min < 0) return 'Minutes cannot be negative';
+  if (sec !== null && (sec < 0 || sec >= 60)) return 'Seconds must be between 0 and 59';
+  if (min === 0 && sec === 0) return 'Pace cannot be zero';
+  return undefined;
+}
+
+function validateTime(hr: number | null, min: number | null, sec: number | null): string | undefined {
+  if (hr === null && min === null && sec === null) return undefined;
+  if (hr !== null && hr < 0) return 'Hours cannot be negative';
+  if (min !== null && (min < 0 || min >= 60)) return 'Minutes must be between 0 and 59';
+  if (sec !== null && (sec < 0 || sec >= 60)) return 'Seconds must be between 0 and 59';
+  if (hr === 0 && min === 0 && sec === 0) return 'Time cannot be zero';
+  return undefined;
+}
+
+function validateDistance(dist: number | null): string | undefined {
+  if (dist === null) return undefined;
+  if (dist <= 0) return 'Distance must be greater than zero';
+  if (dist > 100000) return 'Distance seems unrealistic';
+  return undefined;
+}
+
+// Main reactive calculation logic
 $effect(() => {
-  const _paceMin = $paceMin;
-  const _paceSec = $paceSec;
-  const _timeHr = $timeHr;
-  const _timeMin = $timeMin;
-  const _timeSec = $timeSec;
-  const _distance = $distance;
+  const pace = $paceInSeconds;
+  const time = $timeInSeconds;
+  const dist = $distance;
+  const modified = $lastModified;
 
-  console.log("Effect running with distance:", _distance);
+  // Validate inputs
+  const paceError = validatePace($paceMin, $paceSec);
+  const timeError = validateTime($timeHr, $timeMin, $timeSec);
+  const distanceError = validateDistance(dist);
 
-  const hasPace = _paceMin != null && _paceSec != null;
-  const hasTime = _timeHr != null && _timeMin != null && _timeSec != null;
-  const hasDistance = _distance != null;
-  
-  // Determine what changed since last run
-  const paceChanged = _paceMin !== prevValues.paceMin || _paceSec !== prevValues.paceSec;
-  const timeChanged = _timeHr !== prevValues.timeHr || _timeMin !== prevValues.timeMin || _timeSec !== prevValues.timeSec;
-  const distanceChanged = _distance !== prevValues.distance;
-  
-  // Update previous values for next comparison
-  prevValues.paceMin = _paceMin;
-  prevValues.paceSec = _paceSec;
-  prevValues.timeHr = _timeHr;
-  prevValues.timeMin = _timeMin;
-  prevValues.timeSec = _timeSec;
-  prevValues.distance = _distance;
+  errors.set({
+    pace: paceError,
+    time: timeError,
+    distance: distanceError
+  });
 
-  // Normalize time values if they exist
-  if (hasTime) {
-    const normalized = normalizeTime(_timeHr, _timeMin, _timeSec);
-    if (normalized.hours !== _timeHr || normalized.minutes !== _timeMin || normalized.seconds !== _timeSec) {
-      timeHr.set(normalized.hours);
-      timeMin.set(normalized.minutes);
-      timeSec.set(normalized.seconds);
-      return; // The effect will run again with normalized values
+  // Skip calculations if we have errors
+  if (paceError || timeError || distanceError) return;
+
+  // Check which values we have
+  const hasPace = pace !== null;
+  const hasTime = time !== null;
+  const hasDistance = dist !== null;
+
+  // Skip calculations if we don't have at least two values
+  if ([hasPace, hasTime, hasDistance].filter(Boolean).length < 2) return;
+
+  // When all three are present, prioritize by what was last modified
+  if (hasPace && hasTime && hasDistance) {
+    if (modified === 'pace') {
+      // Recalculate distance when pace changes
+      const newDistance = Math.round((time / pace) * 1000);
+      if (newDistance !== dist) distance.set(newDistance);
+    } else if (modified === 'time') {
+      // Recalculate pace when time changes
+      const newPaceInSeconds = time / (dist / 1000);
+      const { minutes, seconds } = secondsToPace(newPaceInSeconds);
+      paceMin.set(minutes);
+      paceSec.set(seconds);
+    } else {
+      // Recalculate time when distance changes
+      const newTimeInSeconds = pace * (dist / 1000);
+      const { hours, minutes, seconds } = secondsToTime(newTimeInSeconds);
+      timeHr.set(hours);
+      timeMin.set(minutes);
+      timeSec.set(seconds);
     }
+    return;
   }
 
-  // Normalize pace values if they exist
-  if (hasPace) {
-    const normalized = normalizePace(_paceMin, _paceSec);
-    if (normalized.minutes !== _paceMin || normalized.seconds !== _paceSec) {
-      paceMin.set(normalized.minutes);
-      paceSec.set(normalized.seconds);
-      return; // The effect will run again with normalized values
-    }
-  }
-
-  // Berechnung: Pace + Distance → Time
-  if (hasPace && hasDistance && (!hasTime || distanceChanged || paceChanged)) {
-    const paceSeconds = _paceMin * 60 + _paceSec;
-    const totalSeconds = (_distance / 1000) * paceSeconds;
-    
-    const normalized = normalizeTime(
-      Math.floor(totalSeconds / 3600),
-      Math.floor((totalSeconds % 3600) / 60),
-      Math.round(totalSeconds % 60)
-    );
-    
-    timeHr.set(normalized.hours);
-    timeMin.set(normalized.minutes);
-    timeSec.set(normalized.seconds);
-  }
-
-  // Berechnung: Time + Distance → Pace
-  else if (hasTime && hasDistance && (!hasPace || distanceChanged || timeChanged)) {
-    const totalSeconds = _timeHr * 3600 + _timeMin * 60 + _timeSec;
-    const paceSeconds = totalSeconds / (_distance / 1000);
-    
-    const normalized = normalizePace(
-      Math.floor(paceSeconds / 60),
-      Math.round(paceSeconds % 60)
-    );
-    
-    paceMin.set(normalized.minutes);
-    paceSec.set(normalized.seconds);
-  }
-
-  // Berechnung: Pace + Time → Distance
-  else if (hasPace && hasTime && (!hasDistance || paceChanged || timeChanged)) {
-    const totalSeconds = _timeHr * 3600 + _timeMin * 60 + _timeSec;
-    const paceSeconds = _paceMin * 60 + _paceSec;
-    distance.set(Math.round((totalSeconds / paceSeconds) * 1000));
+  // Calculate the missing value
+  if (!hasDistance && hasPace && hasTime) {
+    // Calculate distance from pace and time
+    const newDistance = Math.round((time / pace) * 1000);
+    distance.set(newDistance);
+  } else if (!hasTime && hasPace && hasDistance) {
+    // Calculate time from pace and distance
+    const newTimeInSeconds = pace * (dist / 1000);
+    const { hours, minutes, seconds } = secondsToTime(newTimeInSeconds);
+    timeHr.set(hours);
+    timeMin.set(minutes);
+    timeSec.set(seconds);
+  } else if (!hasPace && hasTime && hasDistance) {
+    // Calculate pace from time and distance
+    const newPaceInSeconds = time / (dist / 1000);
+    const { minutes, seconds } = secondsToPace(newPaceInSeconds);
+    paceMin.set(minutes);
+    paceSec.set(seconds);
   }
 });
 
@@ -150,49 +176,63 @@ $effect(() => {
 function handlePaceMinInput(e: Event) {
   const value = (e.target as HTMLInputElement).value;
   paceMin.set(value ? Number(value) : null);
+  updatePace();
 }
 
 function handlePaceSecInput(e: Event) {
   const value = (e.target as HTMLInputElement).value;
-  paceSec.set(value ? Number(value) : null);
-  
-  // Normalize if entered seconds are >= 60
-  if ($paceSec && $paceSec >= 60 && $paceMin !== null) {
-    const normalized = normalizePace($paceMin, $paceSec);
-    paceMin.set(normalized.minutes);
-    paceSec.set(normalized.seconds);
+  const numValue = value ? Number(value) : null;
+
+  if (numValue !== null && numValue >= 60 && $paceMin !== null) {
+    // Normalize if seconds >= 60
+    const totalSeconds = $paceMin * 60 + numValue;
+    const { minutes, seconds } = secondsToPace(totalSeconds);
+    paceMin.set(minutes);
+    paceSec.set(seconds);
+  } else {
+    paceSec.set(numValue);
   }
+  updatePace();
 }
 
 function handleTimeHrInput(e: Event) {
   const value = (e.target as HTMLInputElement).value;
   timeHr.set(value ? Number(value) : null);
+  updateTime();
 }
 
 function handleTimeMinInput(e: Event) {
   const value = (e.target as HTMLInputElement).value;
-  timeMin.set(value ? Number(value) : null);
-  
-  // Normalize if entered minutes are >= 60
-  if ($timeMin && $timeMin >= 60 && $timeHr !== null) {
-    const normalized = normalizeTime($timeHr, $timeMin, $timeSec || 0);
-    timeHr.set(normalized.hours);
-    timeMin.set(normalized.minutes);
-    timeSec.set(normalized.seconds);
+  const numValue = value ? Number(value) : null;
+
+  if (numValue !== null && numValue >= 60 && $timeHr !== null) {
+    // Normalize if minutes >= 60
+    const totalSeconds = $timeHr * 3600 + numValue * 60 + ($timeSec || 0);
+    const { hours, minutes, seconds } = secondsToTime(totalSeconds);
+    timeHr.set(hours);
+    timeMin.set(minutes);
+    timeSec.set(seconds);
+  } else {
+    timeMin.set(numValue);
   }
+  updateTime();
 }
 
 function handleTimeSecInput(e: Event) {
   const value = (e.target as HTMLInputElement).value;
-  timeSec.set(value ? Number(value) : null);
-  
-  // Normalize if entered seconds are >= 60
-  if ($timeSec && $timeSec >= 60 && $timeMin !== null && $timeHr !== null) {
-    const normalized = normalizeTime($timeHr, $timeMin, $timeSec);
-    timeHr.set(normalized.hours);
-    timeMin.set(normalized.minutes);
-    timeSec.set(normalized.seconds);
+  const numValue = value ? Number(value) : null;
+
+  if (numValue !== null && numValue >= 60 && $timeMin !== null) {
+    // Normalize if seconds >= 60
+    const totalSeconds = ($timeHr || 0) * 3600 + $timeMin * 60 + numValue;
+    const { hours, minutes, seconds } = secondsToTime(totalSeconds);
+    timeHr.set(hours);
+    timeMin.set(minutes);
+    timeSec.set(seconds);
+  } else {
+    timeSec.set(numValue);
   }
+  updateTime();
 }
 
 function handleDistanceInput(e: Event) {
@@ -206,23 +246,46 @@ function handleDistanceInput(e: Event) {
   
   // Make sure we're parsing the full value
   const numValue = parseInt(inputValue, 10);
-  console.log("Distance input:", inputValue, "Parsed as:", numValue);
   
   // Check for valid number
   if (!isNaN(numValue)) {
     distance.set(numValue);
-  } else {
-    distance.set(null);
+    updateDistance();
   }
+}
+
+// Reset all inputs
+function resetCalculator() {
+  paceMin.set(null);
+  paceSec.set(null);
+  timeHr.set(null);
+  timeMin.set(null);
+  timeSec.set(null);
+  distance.set(null);
+  errors.set({});
+}
+
+// Toggle dark mode
+function toggleDarkMode() {
+  isDarkMode.update(mode => !mode);
 }
 </script>
 
-<div class="max-w-md mx-auto p-6 bg-white rounded-lg">
-    <h2 class="text-2xl font-bold mb-6 text-gray-800">Running Pace Calculator</h2>
+<div class="max-w-md mx-auto p-6 rounded-lg transition-colors duration-200 {$isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold">Running Pace Calculator</h2>
+        <button 
+            onclick={toggleDarkMode}
+            class="p-2 rounded-full {$isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}"
+            aria-label="Toggle dark mode"
+        >
+            {$isDarkMode ? '🌞' : '🌙'}
+        </button>
+    </div>
     
     <!-- Pace Input -->
     <div class="mb-6">
-        <label for="pace-minutes" class="block text-gray-700 text-sm font-bold mb-2">Pace (min/km)</label>
+        <label for="pace-minutes" class="block text-sm font-bold mb-2">Pace (min/km)</label>
         <div class="flex gap-2">
             <input
                 id="pace-minutes"
@@ -230,7 +293,7 @@ function handleDistanceInput(e: Event) {
                 value={$paceMin ?? ''}
                 onblur={handlePaceMinInput}
                 placeholder="min"
-                class="w-20 px-3 py-2 border rounded"
+                class="w-20 px-3 py-2 border rounded {$isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}"
                 min="0"
                 aria-label="Minutes per kilometer"
             />
@@ -241,17 +304,20 @@ function handleDistanceInput(e: Event) {
                 value={$paceSec ?? ''}
                 onblur={handlePaceSecInput}
                 placeholder="sec"
-                class="w-20 px-3 py-2 border rounded"
+                class="w-20 px-3 py-2 border rounded {$isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}"
                 min="0"
                 max="59"
                 aria-label="Seconds per kilometer"
             />
         </div>
+        {#if $errors.pace}
+            <p class="text-red-500 text-sm mt-1">{$errors.pace}</p>
+        {/if}
     </div>
 
     <!-- Time Input -->
     <div class="mb-6">
-        <label for="time" class="block text-gray-700 text-sm font-bold mb-2">Total Time</label>
+        <label for="time" class="block text-sm font-bold mb-2">Total Time</label>
         <div class="flex gap-2">
             <input
                 id="time-hours"
@@ -259,7 +325,7 @@ function handleDistanceInput(e: Event) {
                 value={$timeHr ?? ''}
                 onblur={handleTimeHrInput}
                 placeholder="hh"
-                class="w-20 px-3 py-2 border rounded"
+                class="w-20 px-3 py-2 border rounded {$isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}"
                 min="0"
                 aria-label="Hours"
             />
@@ -270,7 +336,7 @@ function handleDistanceInput(e: Event) {
                 value={$timeMin ?? ''}
                 onblur={handleTimeMinInput}
                 placeholder="mm"
-                class="w-20 px-3 py-2 border rounded"
+                class="w-20 px-3 py-2 border rounded {$isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}"
                 min="0"
                 max="59"
                 aria-label="Minutes"
@@ -282,17 +348,20 @@ function handleDistanceInput(e: Event) {
                 value={$timeSec ?? ''}
                 onblur={handleTimeSecInput}
                 placeholder="ss"
-                class="w-20 px-3 py-2 border rounded"
+                class="w-20 px-3 py-2 border rounded {$isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}"
                 min="0"
                 max="59"
                 aria-label="Seconds"
             />
         </div>
+        {#if $errors.time}
+            <p class="text-red-500 text-sm mt-1">{$errors.time}</p>
+        {/if}
     </div>
 
     <!-- Distance Input -->
     <div class="mb-4">
-        <label for="distance" class="block text-gray-700 text-sm font-bold mb-2">Distance (meters)</label>
+        <label for="distance" class="block text-sm font-bold mb-2">Distance (meters)</label>
         <input
             id="distance"
             type="text"
@@ -301,44 +370,56 @@ function handleDistanceInput(e: Event) {
             value={$distance ?? ''}
             onblur={handleDistanceInput}
             placeholder="Enter distance in meters"
-            class="w-full px-3 py-2 border rounded"
+            class="w-full px-3 py-2 border rounded {$isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}"
             min="0"
             aria-label="Distance in meters"
         />
+        {#if $errors.distance}
+            <p class="text-red-500 text-sm mt-1">{$errors.distance}</p>
+        {/if}
     </div>
     
     <!-- Distance Preset Buttons -->
     <div class="mb-6">
-        <div class="text-gray-700 text-sm font-bold mb-2">Common Distances:</div>
+        <div class="text-sm font-bold mb-2">Common Distances:</div>
         <div class="flex flex-wrap gap-2">
             <button 
-            onclick={() => setPresetDistance('fiveK')} 
-            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
-            aria-label="Set distance to 5K"
-        >
-            5K (5,000m)
-        </button>
+                onclick={() => setPresetDistance('fiveK')} 
+                class="{$isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white px-3 py-1 rounded text-sm"
+                aria-label="Set distance to 5K"
+            >
+                5K (5,000m)
+            </button>
             <button 
                 onclick={() => setPresetDistance('tenK')} 
-                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                class="{$isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white px-3 py-1 rounded text-sm"
                 aria-label="Set distance to 10K"
             >
                 10K (10,000m)
             </button>
             <button 
                 onclick={() => setPresetDistance('halfMarathon')} 
-                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                class="{$isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white px-3 py-1 rounded text-sm"
                 aria-label="Set distance to half marathon"
             >
                 Half Marathon (21,097m)
             </button>
             <button 
                 onclick={() => setPresetDistance('marathon')} 
-                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                class="{$isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white px-3 py-1 rounded text-sm"
                 aria-label="Set distance to marathon"
             >
                 Marathon (42,195m)
             </button>
         </div>
     </div>
+
+    <!-- Reset Button -->
+    <button 
+        onclick={resetCalculator}
+        class="w-full py-2 rounded text-sm font-bold {$isDarkMode ? 'bg-gray-700 hover:bg-gray-600 active:bg-gray-600' : 'bg-gray-300 hover:bg-gray-400 active:bg-gray-400'}"
+        aria-label="Reset calculator"
+    >
+        Reset Calculator
+    </button>
 </div> 
