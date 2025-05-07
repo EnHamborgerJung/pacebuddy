@@ -8,7 +8,7 @@
 		<a href="/" class="hover:text-gray-300" on:click={closeMenu}>Home</a>
 	</li>
 	<li>
-		<a href="/running" class="hover:text-gray-300" on:click={closeMenu}>Running</a>
+		<a href="/running" class="hover:text-gray-500" on:click={closeMenu}>Running</a>
 	</li>
 	{#if !user.isAuthenticated}
 		<li>
