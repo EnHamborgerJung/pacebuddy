@@ -1,7 +1,12 @@
+version: '3.8'
+
 services:
-  pacebuddy:
+  web:
     build: .
-    container_name: pacebuddy
-    restart: always
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000:4000"
+    environment:
+      - DATABASE_URL=/app/sqlite.db
+
+
+
