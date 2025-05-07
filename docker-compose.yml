@@ -1,0 +1,9 @@
+services:
+  pacebuddy:
+    build: .
+    container_name: pacebuddy
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "local.db"
