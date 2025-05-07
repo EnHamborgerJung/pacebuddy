@@ -19,6 +19,7 @@ jobs:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_PRIVATE_SSH_KEY }}
+          debug: true
           script: |
             # Navigate to project directory
             PROJECT_DIR="/home/projects/pacebuddy"
