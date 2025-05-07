@@ -1,0 +1,45 @@
+name: Deploy to VPS 
+
+on:
+  push:
+    branches:
+      - live  # Passe das an, falls du einen anderen Branch nutzen willst
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Code aus GitHub holen
+        uses: actions/checkout@v4
+
+      - name: SSH in den Server & Update Services
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_PRIVATE_SSH_KEY }}
+          script: |
+            # Navigate to project directory
+            PROJECT_DIR="/home/projects/pacebuddy"
+            cd $PROJECT_DIR
+            
+            # Debug: Check SSH Connection
+            echo "✅ SSH Connection Successful!"
+
+            # Ensure we are on the main branch
+            git checkout live 
+
+            # Debug: Show current branch
+            git branch
+
+            # Pull latest code
+            git pull origin live
+
+            echo "🛑 Stoppe alten Container..."
+            docker-compose down
+
+            echo "🚀 Starte neuen Container..."
+            docker-compose up -d --build
+
+            echo "🚀 Deployment Completed!"
