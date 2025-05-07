@@ -4,9 +4,10 @@ services:
   web:
     build: .
     expose:
-      - "3000:4000"
+      - "4000:3000"
+    restart: always
     environment:
-      - DATABASE_URL=/app/sqlite.db
+      - DATABASE_URL= /app/local.db
 
 
 

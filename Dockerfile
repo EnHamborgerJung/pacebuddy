@@ -13,14 +13,14 @@ RUN npm install
 # SvelteKit Build kopieren
 COPY . .
 
+# Kopiere .env.example und benenne sie in .env um, falls keine existiert
+RUN cp .env.example .env
+
 # Synchronisiere SvelteKit-Projekt, um fehlende tsconfig.json zu generieren
 RUN npm run prepare
 
 # Migrate the database
 RUN npm run db:push --force
-
-# Kopiere .env.example und benenne sie in .env um, falls keine existiert
-RUN cp .env.example .env
 
 # Build durchführen
 RUN npm run build
