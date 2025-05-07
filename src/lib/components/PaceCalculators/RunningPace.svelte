@@ -19,6 +19,14 @@ const prevValues = {
   distance: null as number | null
 };
 
+// Standard running distances in meters
+const distancePresets = {
+  fiveK: 5000,         // 5 km
+  tenK: 10000,         // 10 km
+  halfMarathon: 21097, // 21.097 km
+  marathon: 42195      // 42.195 km
+};
+
 // Function to normalize time values (handle seconds >= 60, minutes >= 60)
 function normalizeTime(hours: number, minutes: number, seconds: number) {
   // If seconds >= 60, adjust minutes and seconds
@@ -45,6 +53,11 @@ function normalizePace(minutes: number, seconds: number) {
   }
   
   return { minutes, seconds };
+}
+
+// Set a preset distance
+function setPresetDistance(preset: keyof typeof distancePresets) {
+  distance.set(distancePresets[preset]);
 }
 
 $effect(() => {
@@ -278,7 +291,7 @@ function handleDistanceInput(e: Event) {
     </div>
 
     <!-- Distance Input -->
-    <div class="mb-6">
+    <div class="mb-4">
         <label for="distance" class="block text-gray-700 text-sm font-bold mb-2">Distance (meters)</label>
         <input
             id="distance"
@@ -292,5 +305,40 @@ function handleDistanceInput(e: Event) {
             min="0"
             aria-label="Distance in meters"
         />
+    </div>
+    
+    <!-- Distance Preset Buttons -->
+    <div class="mb-6">
+        <div class="text-gray-700 text-sm font-bold mb-2">Common Distances:</div>
+        <div class="flex flex-wrap gap-2">
+            <button 
+            onclick={() => setPresetDistance('fiveK')} 
+            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+            aria-label="Set distance to 5K"
+        >
+            5K (5,000m)
+        </button>
+            <button 
+                onclick={() => setPresetDistance('tenK')} 
+                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                aria-label="Set distance to 10K"
+            >
+                10K (10,000m)
+            </button>
+            <button 
+                onclick={() => setPresetDistance('halfMarathon')} 
+                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                aria-label="Set distance to half marathon"
+            >
+                Half Marathon (21,097m)
+            </button>
+            <button 
+                onclick={() => setPresetDistance('marathon')} 
+                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                aria-label="Set distance to marathon"
+            >
+                Marathon (42,195m)
+            </button>
+        </div>
     </div>
 </div> 
