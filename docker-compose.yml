@@ -8,8 +8,7 @@ services:
     restart: always
     environment:
       - DATABASE_URL=/app/local.db
-    volumes:
-      - ./data:/app/data
+
 
 
 
