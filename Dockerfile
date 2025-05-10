@@ -1,5 +1,5 @@
 # Basis-Image
-FROM node:23-slim
+FROM node:20-slim
 
 # Arbeitsverzeichnis setzen
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN npm install
 COPY . .
 
 # Kopiere .env.example und benenne sie in .env um, falls keine existiert
-RUN cp .env.example .env
+RUN cp .env.example .env || true
 
 # Synchronisiere SvelteKit-Projekt, um fehlende tsconfig.json zu generieren
 RUN npm run prepare
