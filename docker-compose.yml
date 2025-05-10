@@ -9,7 +9,7 @@ services:
     environment:
       - DATABASE_URL=/app/local.db
     volumes:
-      - ./local.db:/app/local.db
+      - ./data:/app/data
 
 
 

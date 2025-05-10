@@ -16,6 +16,9 @@ COPY . .
 # Kopiere .env.example und benenne sie in .env um, falls keine existiert
 RUN cp .env.example .env || true
 
+# Create data directory
+RUN mkdir -p /app/data
+
 # Synchronisiere SvelteKit-Projekt, um fehlende tsconfig.json zu generieren
 RUN npm run prepare
 
